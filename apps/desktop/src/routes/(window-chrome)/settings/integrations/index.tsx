@@ -1,6 +1,7 @@
 import { Button } from "@cap/ui-solid";
 import { useNavigate } from "@solidjs/router";
 import { For, onMount } from "solid-js";
+import IconLucideCloud from "~icons/lucide/cloud";
 import IconLucideDatabase from "~icons/lucide/database";
 
 import "@total-typescript/ts-reset/filter-boolean";
@@ -18,6 +19,14 @@ export default function AppsTab() {
 	});
 
 	const apps = [
+		{
+			name: "Azure Blob Storage",
+			description:
+				"Upload recordings straight to your own Azure Blob Storage container — no Cap account required. Share links are clean public blob URLs. Use a container with anonymous blob-level read and a container-scoped SAS token with write permission. Best for local/self-hosted setups.",
+			icon: IconLucideCloud,
+			url: "/settings/integrations/azure-config",
+			pro: false,
+		},
 		{
 			name: "S3 Config",
 			description:

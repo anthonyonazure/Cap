@@ -4,6 +4,7 @@ mod api;
 mod audio;
 mod audio_meter;
 mod auth;
+mod azure_upload;
 mod camera;
 mod camera_legacy;
 mod captions;
@@ -2429,11 +2430,6 @@ async fn upload_exported_video(
     channel: Channel<UploadProgress>,
     organization_id: Option<String>,
 ) -> Result<UploadResult, String> {
-    let Ok(Some(auth)) = AuthStore::get(&app) else {
-        AuthStore::set(&app, None).map_err(|e| e.to_string())?;
-        return Ok(UploadResult::NotAuthenticated);
-    };
-
     let mut meta = RecordingMeta::load_for_project(&path).map_err(|v| v.to_string())?;
 
     let file_path = meta.output_path();
@@ -2441,6 +2437,73 @@ async fn upload_exported_video(
         notifications::send_notification(&app, notifications::NotificationType::UploadFailed);
         return Err("Failed to upload video: Rendered video not found".to_string());
     }
+
+    let azure_active = general_settings::GeneralSettingsStore::get(&app)
+        .ok()
+        .flatten()
+        .map(|s| s.azure_storage.is_active())
+        .unwrap_or(false);
+
+    if azure_active {
+        let video_id = match mode {
+            UploadMode::Initial { pre_created_video } => pre_created_video
+                .map(|p| p.config.id)
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string().replace('-', "")),
+            UploadMode::Reupload => meta
+                .sharing
+                .as_ref()
+                .map(|s| s.id.clone())
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string().replace('-', "")),
+        };
+
+        channel.send(UploadProgress { progress: 0.0 }).ok();
+
+        return match azure_upload::upload_video_to_azure(
+            &app,
+            video_id,
+            file_path.clone(),
+            Some(channel.clone()),
+        )
+        .await
+        {
+            Ok(uploaded) => {
+                channel.send(UploadProgress { progress: 1.0 }).ok();
+                meta.upload = Some(UploadMeta::Complete);
+                meta.sharing = Some(SharingMeta {
+                    link: uploaded.link.clone(),
+                    id: uploaded.id.clone(),
+                });
+                meta.save_for_project()
+                    .map_err(|e| error!("Failed to save recording meta: {e}"))
+                    .ok();
+
+                let _ = app
+                    .state::<ArcLock<ClipboardContext>>()
+                    .write()
+                    .await
+                    .set_text(uploaded.link.clone());
+
+                NotificationType::ShareableLinkCopied.send(&app);
+                Ok(UploadResult::Success(uploaded.link))
+            }
+            Err(err) => {
+                error!("Azure upload failed: {err}");
+                NotificationType::UploadFailed.send(&app);
+                meta.upload = Some(UploadMeta::Failed {
+                    error: err.to_string(),
+                });
+                meta.save_for_project()
+                    .map_err(|e| error!("Failed to save recording meta: {e}"))
+                    .ok();
+                Err(err.to_string())
+            }
+        };
+    }
+
+    let Ok(Some(auth)) = AuthStore::get(&app) else {
+        AuthStore::set(&app, None).map_err(|e| e.to_string())?;
+        return Ok(UploadResult::NotAuthenticated);
+    };
 
     let metadata = build_video_meta(&file_path)
         .map_err(|err| format!("Error getting output video meta: {err}"))?;
@@ -3503,6 +3566,7 @@ pub async fn run(recording_logging_handle: LoggingHandle, logs_dir: PathBuf) {
             recovery::find_incomplete_recordings,
             recovery::recover_recording,
             recovery::discard_incomplete_recording,
+            azure_upload::azure_test_connection,
         ])
         .events(tauri_specta::collect_events![
             RecordingOptionsChanged,
@@ -3536,6 +3600,7 @@ pub async fn run(recording_logging_handle: LoggingHandle, logs_dir: PathBuf) {
         .typ::<presets::PresetsStore>()
         .typ::<hotkeys::HotkeysStore>()
         .typ::<general_settings::GeneralSettingsStore>()
+        .typ::<general_settings::AzureStorageConfig>()
         .typ::<recording_settings::RecordingSettingsStore>()
         .typ::<cap_flags::Flags>()
         .typ::<crate::window_exclusion::WindowExclusion>();
