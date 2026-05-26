@@ -46,13 +46,15 @@ jobs:
           pnpm build:tauri --target x86_64-pc-windows-msvc --config src-tauri/tauri.prod.conf.json
 
       - name: Upload NSIS installer
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cap-azure-windows-nsis
           path: target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload MSI installer
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cap-azure-windows-msi
