@@ -63,7 +63,22 @@
 			"allowedVersions": {
 				"next-auth>next": ">=16.0.0"
 			}
-		}
+		},
+		"onlyBuiltDependencies": [
+			"@nestjs/core",
+			"@parcel/watcher",
+			"@swc/core",
+			"aws-sdk",
+			"cbor-extract",
+			"core-js",
+			"esbuild",
+			"ffmpeg-static",
+			"msgpackr-extract",
+			"protobufjs",
+			"sharp",
+			"unrs-resolver",
+			"workerd"
+		]
 	},
 	"packageManager": "pnpm@10.5.2",
 	"name": "cap",
