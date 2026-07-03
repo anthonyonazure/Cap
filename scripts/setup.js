@@ -199,15 +199,21 @@ async function main() {
 			path.relative(__root, onnxRuntimePath),
 		)}" }\n`;
 
-		const { stdout: vcInstallDir } = await exec(
-			// biome-ignore lint/suspicious/noTemplateCurlyInString: PowerShell syntax, not JS template literal
-			'$(& "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -property installationPath)',
-			{ shell: "powershell.exe" },
+		const vswherePath = path.join(
+			env["ProgramFiles(x86)"] ?? "C:/Program Files (x86)",
+			"Microsoft Visual Studio/Installer/vswhere.exe",
 		);
+		const { stdout: vcInstallDir } = await execFile(vswherePath, [
+			"-latest",
+			"-products",
+			"*",
+			"-property",
+			"installationPath",
+		]);
 
 		const libclangPath = path.join(
 			vcInstallDir.trim(),
-			"VC/Tools/LLVM/x64/bin/libclang.dll",
+			"VC/Tools/Llvm/bin/libclang.dll",
 		);
 
 		cargoConfigContents += `LIBCLANG_PATH = "${libclangPath.replaceAll(
