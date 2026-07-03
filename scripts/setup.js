@@ -211,10 +211,18 @@ async function main() {
 			"installationPath",
 		]);
 
-		const libclangPath = path.join(
-			vcInstallDir.trim(),
+		// bindgen needs the 64-bit libclang; Llvm/bin hosts the 32-bit one
+		const libclangCandidates = [
+			"VC/Tools/Llvm/x64/bin/libclang.dll",
 			"VC/Tools/Llvm/bin/libclang.dll",
-		);
+		].map((rel) => path.join(vcInstallDir.trim(), rel));
+		let libclangPath = libclangCandidates[0];
+		for (const candidate of libclangCandidates) {
+			if (await fileExists(candidate)) {
+				libclangPath = candidate;
+				break;
+			}
+		}
 
 		cargoConfigContents += `LIBCLANG_PATH = "${libclangPath.replaceAll(
 			"\\",
